@@ -9,7 +9,12 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    random = {
+#       source  = "hashicorp/random"
+#       version = "~> 3.6"
+#     }
   }
+}
 
   # Remote state — the detail that signals team-workflow awareness.
   # Create the storage account once (CLI or a tiny bootstrap config),
@@ -43,7 +48,24 @@ module "network" {
   # data_subnet_prefix = "10.10.2.0/24"
 }
 
-# Later, the app and database modules plug in like this:
+
+module "database" {
+  source              = "./modules/database"
+  project_name        = "webapp-demo-molly" # sql server names are GLOBALLY unique — make this yours
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  # Wired straight from the network module's outputs — this is the
+  # modular contract paying off.
+  vnet_id        = module.network.vnet_id
+  data_subnet_id = module.network.data_subnet_id
+
+  # Defaults: username sqladminuser, database appdb, Basic sku.
+  # Override here if you want:
+  # database_sku = "GP_S_Gen5_1"  # serverless, auto-pauses when idle
+}
+
+# Later, the app module will plug in like this:
 #
 # module "app" {
 #   source        = "./modules/app"
@@ -51,8 +73,3 @@ module "network" {
 #   ...
 # }
 #
-# module "database" {
-#   source         = "./modules/database"
-#   data_subnet_id = module.network.data_subnet_id
-#   ...
-# }
