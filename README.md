@@ -6,6 +6,8 @@ Built incrementally as a portfolio project mapping to AZ-104 / AZ-305 / AZ-400 s
 
 **Live proof:** the app's `/health` endpoint opens a real connection to the database and reports the round-trip — a successful response exercises every layer below it (VNet integration → private DNS → private endpoint → SQL).
 
+![Health endpoint showing database connected](images/health-endpoint.png)
+
 ## Architecture
 
 ```mermaid
@@ -69,6 +71,19 @@ Each tier is a self-contained module with a small contract: inputs in `variables
 **Defense in depth on the data tier.** Disabling public network access and restricting the NSG are independent controls — either alone blocks internet access to the database; together, a misconfiguration of one is caught by the other. Verified both directions: a connection attempt from the internet times out, while the app's health check succeeds in ~20–70 ms.
 
 **Private DNS zone, because a private endpoint alone isn't enough.** SQL clients connect to `<server>.database.windows.net`, which by default resolves to a public IP even when a private endpoint exists. The `privatelink.database.windows.net` zone (exact name required) overrides resolution inside the VNet. Observable: `nslookup` of the server FQDN from inside the app answers with the private endpoint's `10.0.2.x` address; the same lookup from the internet gets a public answer.
+
+**Same hostname, two answers — the private DNS zone at work:**
+
+*From inside the app's console — the private zone intercepts and answers with the private endpoint:*
+
+![nslookup from the app console resolving to 10.0.2.4](images/nslookup-from-app.png)
+
+*The same lookup from the public internet — the chain continues to Microsoft's public gateway:*
+
+![nslookup from a laptop resolving to a public IP](images/nslookup-from-laptop.png)
+
+**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs. Known limitation: app settings are visible to anyone with read access on the app; Key Vault references are the CI/CD-phase upgrade.
+
 
 **Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs. Known limitation: app settings are visible to anyone with read access on the app; Key Vault references are the CI/CD-phase upgrade.
 
