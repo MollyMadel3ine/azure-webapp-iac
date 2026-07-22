@@ -16,3 +16,8 @@ output "connection_string" {
   value       = module.database.connection_string
   sensitive   = true
 }
+
+output "app_url" {
+  description = "Public URL of the web app."
+  value       = module.app.app_url
+}
