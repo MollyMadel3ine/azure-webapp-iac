@@ -48,7 +48,7 @@ module "network" {
   # data_subnet_prefix = "10.10.2.0/24"
 }
 
-
+# Database module
 module "database" {
   source              = "./modules/database"
   project_name        = "webapp-demo-molly" # sql server names are GLOBALLY unique — make this yours
@@ -72,4 +72,21 @@ module "database" {
 #   web_subnet_id = module.network.web_subnet_id
 #   ...
 # }
+
+#App module
+module "app" {
+  source              = "./modules/app"
+  project_name        = "webapp-demo-molly" # app URL is global: <this>-app.azurewebsites.net
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  # Network module output — the delegated web subnet
+  web_subnet_id = module.network.web_subnet_id
+
+  # Database module outputs — the app's connection details
+  db_server_fqdn = module.database.sql_server_fqdn
+  db_name        = module.database.database_name
+  db_username    = module.database.sql_admin_username
+  db_password    = module.database.sql_admin_password
+}
 #
