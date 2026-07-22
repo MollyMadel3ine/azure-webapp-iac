@@ -72,6 +72,16 @@ Each tier is a self-contained module with a small contract: inputs in `variables
 
 **Private DNS zone, because a private endpoint alone isn't enough.** SQL clients connect to `<server>.database.windows.net`, which by default resolves to a public IP even when a private endpoint exists. The `privatelink.database.windows.net` zone (exact name required) overrides resolution inside the VNet. Observable: `nslookup` of the server FQDN from inside the app answers with the private endpoint's `10.0.2.x` address; the same lookup from the internet gets a public answer.
 
+**Same hostname, two answers — the private DNS zone at work:**
+
+*From inside the app's console — the private zone intercepts and answers with the private endpoint:*
+
+![nslookup from the app console resolving to 10.0.2.4](images/nslookup-from-app.png)
+
+*The same lookup from the public internet — the chain continues to Microsoft's public gateway:*
+
+![nslookup from a laptop resolving to a public IP](images/nslookup-from-laptop.png)
+
 **Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs. Known limitation: app settings are visible to anyone with read access on the app; Key Vault references are the CI/CD-phase upgrade.
 
 **VNet integration pre-wired in the network module.** `snet-web` was delegated to `Microsoft.Web/serverFarms` before the app existed — App Service VNet integration requires it, and it's the most commonly missed prerequisite.
