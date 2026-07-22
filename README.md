@@ -6,6 +6,8 @@ Built incrementally as a portfolio project mapping to AZ-104 / AZ-305 / AZ-400 s
 
 **Live proof:** the app's `/health` endpoint opens a real connection to the database and reports the round-trip — a successful response exercises every layer below it (VNet integration → private DNS → private endpoint → SQL).
 
+![Health endpoint showing database connected](images/health-endpoint.png)
+
 ## Architecture
 
 ```mermaid
