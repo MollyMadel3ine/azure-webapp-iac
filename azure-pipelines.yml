@@ -22,7 +22,7 @@ pr:
       - main
 
 variables:
-  - group: terraform-credentials   # ARM_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID
+  - group: terraform-credentials # ARM_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID
 
 # Secret variables are NOT auto-exposed to scripts — each step that
 # needs them maps them explicitly via its env: block below.
@@ -31,7 +31,6 @@ pool:
   vmImage: ubuntu-latest
 
 stages:
-
   # ----------------------------------------------------------------
   - stage: Validate
     displayName: "Validate & security scan"
@@ -115,7 +114,7 @@ stages:
     jobs:
       - deployment: apply
         displayName: "apply the reviewed plan"
-        environment: prod        # approval gate configured on the environment
+        environment: prod # approval gate configured on the environment
         strategy:
           runOnce:
             deploy:
