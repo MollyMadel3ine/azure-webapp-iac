@@ -25,13 +25,13 @@ resource "random_password" "sql_admin" {
 # ---------------- SQL Server ----------------
 
 resource "azurerm_mssql_server" "this" {
-  name                          = "${var.project_name}-sql"
-  resource_group_name           = var.resource_group_name
-  location                      = var.location
-  version                       = "12.0"
-  administrator_login           = var.sql_admin_username
-  administrator_login_password  = random_password.sql_admin.result
-  minimum_tls_version           = "1.2"
+  name                         = "${var.project_name}-sql"
+  resource_group_name          = var.resource_group_name
+  location                     = var.location
+  version                      = "12.0"
+  administrator_login          = var.sql_admin_username
+  administrator_login_password = random_password.sql_admin.result
+  minimum_tls_version          = "1.2"
 
   # The headline setting: no public endpoint exists at all.
   public_network_access_enabled = false

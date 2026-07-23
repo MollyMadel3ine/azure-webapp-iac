@@ -10,11 +10,11 @@ terraform {
       version = "~> 4.0"
     }
     random = {
-#       source  = "hashicorp/random"
-#       version = "~> 3.6"
-#     }
+      #       source  = "hashicorp/random"
+      #       version = "~> 3.6"
+      #     }
+    }
   }
-}
 
   # Remote state — the detail that signals team-workflow awareness.
   # Create the storage account once (CLI or a tiny bootstrap config),
