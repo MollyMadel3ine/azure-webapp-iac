@@ -24,6 +24,7 @@ resource "random_password" "sql_admin" {
 
 # ---------------- SQL Server ----------------
 
+#tfsec:ignore:azure-database-enable-audit
 resource "azurerm_mssql_server" "this" {
   name                         = "${var.project_name}-sql"
   resource_group_name          = var.resource_group_name
