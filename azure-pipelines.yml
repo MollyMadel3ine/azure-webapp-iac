@@ -39,6 +39,13 @@ stages:
         displayName: "fmt, validate, tfsec"
         steps:
           - script: |
+              TF_VERSION=1.9.8
+              curl -sSL -o /tmp/terraform.zip https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+              sudo unzip -o /tmp/terraform.zip -d /usr/local/bin
+              terraform -version
+            displayName: "install terraform"
+
+          - script: |
               TFSEC_VERSION=1.28.11
               curl -sSL -o /tmp/tfsec https://github.com/aquasecurity/tfsec/releases/download/v${TFSEC_VERSION}/tfsec-linux-amd64
               chmod +x /tmp/tfsec
