@@ -147,6 +147,6 @@ Roughly **$18/month** while deployed: B1 App Service plan ~$13, Basic-tier SQL ~
 - [x] **Database module** — Azure SQL exposed only through a private endpoint, with VNet-scoped private DNS
 - [x] **App module** — App Service with VNet integration; `/health` endpoint proves the tiers connect
 - [ ] **CI/CD** — Multi-stage Azure DevOps pipeline: validate + tfsec on PR, plan as reviewed artifact, apply gated behind manual approval
-- [ ] **Observability & governance** — Azure Monitor alerts, Log Analytics, Azure Policy (require tags, deny public IPs in the data subnet)
+- [ ] **Observability & governance** — Azure Monitor alerts, Log Analytics, Azure Policy (require tags, deny public IPs in the data subnet) and SQL audit logging to Log Analytics (closes the deferred tfsec finding)."
 
 Each phase lands as its own pull request.
