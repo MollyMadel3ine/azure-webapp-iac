@@ -1,0 +1,134 @@
+# ------------------------------------------------------------------
+# azure-pipelines.yml  — lives at the repo root
+#
+# Three stages:
+#   Validate : fmt check, terraform validate, tfsec security scan
+#   Plan     : terraform plan, saved and published as an artifact
+#   Apply    : ONLY on main, gated by the 'prod' environment approval,
+#              applies the EXACT plan file that was reviewed.
+#
+# Pull requests run Validate + Plan (the plan output is the review
+# artifact). Pushes to main run all three stages.
+# ------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: terraform-credentials   # ARM_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID
+
+# Secret variables are NOT auto-exposed to scripts — each step that
+# needs them maps them explicitly via its env: block below.
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+
+  # ----------------------------------------------------------------
+  - stage: Validate
+    displayName: "Validate & security scan"
+    jobs:
+      - job: validate
+        displayName: "fmt, validate, tfsec"
+        steps:
+
+          - script: terraform fmt -check -recursive -diff
+            displayName: "terraform fmt (style check)"
+
+          - script: terraform init -backend=false
+            displayName: "terraform init (no backend — syntax only)"
+
+          - script: terraform validate
+            displayName: "terraform validate"
+
+          - script: |
+              curl -sSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+              tfsec . --no-color
+            displayName: "tfsec security scan"
+
+  # ----------------------------------------------------------------
+  - stage: Plan
+    displayName: "Terraform plan"
+    dependsOn: Validate
+    jobs:
+      - job: plan
+        displayName: "plan and publish artifact"
+        steps:
+
+          - script: terraform init
+            displayName: "terraform init (remote state)"
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+          - script: terraform plan -out=$(Build.ArtifactStagingDirectory)/tfplan -input=false
+            displayName: "terraform plan"
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+          # Human-readable version of the plan into the pipeline log,
+          # so reviewers read it without downloading anything.
+          - script: terraform show -no-color $(Build.ArtifactStagingDirectory)/tfplan
+            displayName: "show plan (for review)"
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+          - publish: $(Build.ArtifactStagingDirectory)/tfplan
+            artifact: tfplan
+            displayName: "publish plan artifact"
+
+  # ----------------------------------------------------------------
+  - stage: Apply
+    displayName: "Terraform apply (gated)"
+    dependsOn: Plan
+    # Only applies from main — never from a PR branch.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: apply
+        displayName: "apply the reviewed plan"
+        environment: prod        # approval gate configured on the environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Deployment jobs don't checkout source by default —
+                # we need the .tf files for init, so fetch them.
+                - checkout: self
+
+                - download: current
+                  artifact: tfplan
+                  displayName: "download reviewed plan"
+
+                - script: terraform init
+                  displayName: "terraform init (remote state)"
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+                # Applying the SAVED PLAN FILE, not a fresh plan:
+                # what was approved is exactly what executes.
+                - script: terraform apply -input=false $(Pipeline.Workspace)/tfplan/tfplan
+                  displayName: "terraform apply (reviewed plan)"
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
