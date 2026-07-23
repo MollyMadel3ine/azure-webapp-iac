@@ -21,3 +21,8 @@ output "app_url" {
   description = "Public URL of the web app."
   value       = module.app.app_url
 }
+
+output "app_name" {
+  description = "Name of the web app (for az webapp deploy commands)."
+  value       = module.app.app_name
+}
