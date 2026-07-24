@@ -17,6 +17,7 @@ import time
 
 import pymssql
 from fastapi import FastAPI
+from fastapi.responses import JSONresponse
 
 app = FastAPI(title="azure-webapp-iac")
 
@@ -61,9 +62,12 @@ def health():
         }
     except Exception as exc:  # deliberately broad: this is a health probe
         elapsed_ms = round((time.perf_counter() - started) * 1000)
-        return {
+        return JSONResponse(
+            status_code=503,
+            content={
             "status": "unhealthy",
             "database": "unreachable",
             "latency_ms": elapsed_ms,
             "error": str(exc),
         }
+        )
