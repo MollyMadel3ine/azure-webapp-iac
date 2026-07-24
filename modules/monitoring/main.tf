@@ -13,7 +13,7 @@ resource "azurerm_log_analytics_workspace" "this" {
   location            = var.location
   resource_group_name = var.resource_group_name
 
-  sku               = "PerGB2018"          # pay-as-you-go; demo volumes cost pennies
+  sku               = "PerGB2018" # pay-as-you-go; demo volumes cost pennies
   retention_in_days = var.log_retention_days
 
   tags = var.tags
