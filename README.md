@@ -1,8 +1,8 @@
 # Azure Web App — Infrastructure as Code
 
-A modular Terraform deployment of a three-tier Azure environment: virtual network with least-privilege NSGs, a Python web app with VNet integration, and an Azure SQL database reachable only through a private endpoint. Everything is deployed through code — zero portal clicking.
+A modular Terraform deployment of a three-tier Azure environment — virtual network with least-privilege NSGs, a Python web app with VNet integration, and an Azure SQL database reachable only through a private endpoint — delivered through a multi-stage CI/CD pipeline with security scanning and approval-gated applies. Everything is deployed through code: zero portal clicking, and since the CI/CD phase, zero laptop applies.
 
-Built incrementally as a portfolio project mapping to AZ-104 / AZ-305 / AZ-400 skills. The commit history reflects real development: each module lands as its own pull request.
+Built incrementally as a portfolio project mapping to AZ-104 / AZ-305 / AZ-400 skills. Each phase landed as its own pull request.
 
 **Live proof:** the app's `/health` endpoint opens a real connection to the database and reports the round-trip — a successful response exercises every layer below it (VNet integration → private DNS → private endpoint → SQL).
 
@@ -38,15 +38,35 @@ flowchart TB
 
 **The traffic asymmetry, on purpose:** the app is publicly reachable (that's its job), while its VNet integration provides *outbound* access into the VNet — which is how it reaches the database. The database has no internet path by two independent mechanisms: `public_network_access_enabled = false` at the server (no public endpoint exists at all) and an NSG rule permitting inbound 1433 only from the web subnet's CIDR. Public front door, private back end.
 
+## How changes ship
+
+All infrastructure changes flow through the pipeline (`azure-pipelines.yml`) — a push to `main` cannot reach Azure without passing three stages:
+
+```mermaid
+flowchart LR
+    pr[Pull request] --> v["Validate<br/>fmt · validate · tfsec"]
+    v --> p["Plan<br/>saved as artifact,<br/>readable in the log"]
+    p --> gate{{"Manual approval<br/>(prod environment)"}}
+    gate --> a["Apply<br/>the exact reviewed<br/>plan file"]
+```
+
+- **Validate** — `terraform fmt -check`, `terraform validate`, and a tfsec security scan run on every pull request. A formatting difference or a security finding fails the build.
+- **Plan** — `terraform plan` output is saved as a pipeline artifact and printed human-readable in the log for review.
+- **Apply** — runs only on `main`, authenticates as a scoped service principal, waits for manual approval on the `prod` environment, and then applies **the exact plan file that was reviewed** — not a freshly generated one. What was approved is byte-for-byte what executes.
+
+Pull requests run Validate + Plan only; the Apply stage cannot be reached from a branch.
+
 ## Repository structure
 
 ```
 ├── app/
 │   ├── main.py              # FastAPI app: / and /health (real DB round-trip)
 │   └── requirements.txt
+├── azure-pipelines.yml      # Multi-stage CI/CD: validate+tfsec → plan artifact → gated apply
 ├── main.tf                  # Root config: providers, remote state backend, module calls
 ├── outputs.tf               # Pass-through of module outputs (sensitive values re-marked)
 ├── .terraform.lock.hcl      # Pinned provider versions (committed on purpose)
+├── images/                  # Verification screenshots
 └── modules/
     ├── network/
     │   ├── main.tf          # VNet, subnets, NSGs, associations
@@ -66,11 +86,19 @@ Each tier is a self-contained module with a small contract: inputs in `variables
 
 ## Design decisions
 
-**Remote state from day one.** State lives in an Azure Storage account with blob-lease locking, not on my laptop. State can hold sensitive values (including the generated SQL password), so it never touches the repo and access to it is controlled.
+**Remote state from day one.** State lives in an Azure Storage account with blob-lease locking, not on a laptop. State can hold sensitive values (including the generated SQL password), so it never touches the repo and access to it is controlled — the pipeline's service principal holds Storage Blob Data Contributor on that account specifically.
 
-**Defense in depth on the data tier.** Disabling public network access and restricting the NSG are independent controls — either alone blocks internet access to the database; together, a misconfiguration of one is caught by the other. Verified both directions: a connection attempt from the internet times out, while the app's health check succeeds in ~20–70 ms.
+**Apply the reviewed plan, not a fresh one.** The pipeline saves the binary plan as an artifact in the Plan stage and applies that file in the Apply stage. Re-planning at apply time would mean executing changes nobody reviewed if anything shifted between stages.
 
-**Private DNS zone, because a private endpoint alone isn't enough.** SQL clients connect to `<server>.database.windows.net`, which by default resolves to a public IP even when a private endpoint exists. The `privatelink.database.windows.net` zone (exact name required) overrides resolution inside the VNet. Observable: `nslookup` of the server FQDN from inside the app answers with the private endpoint's `10.0.2.x` address; the same lookup from the internet gets a public answer.
+**Pipeline identity: Contributor, never Owner.** The service principal is scoped Contributor on the subscription — it can manage resources but cannot grant roles or change access. Subscription scope (rather than the resource group) is deliberate: this project's Terraform creates and destroys the resource group itself, so an RG-scoped role assignment would be deleted with every destroy. Secrets live in a locked pipeline variable group; Key Vault references are the next hardening step.
+
+**Pinned tool versions, direct downloads.** Hosted build agents ship without Terraform, and tfsec's "install latest" script depends on a GitHub API call that rate-limits on shared agent IPs (observed failure, not hypothetical). The pipeline downloads pinned versions of both tools directly from release URLs — no API lookups, no image assumptions, reproducible runs.
+
+**Security findings are triaged, not silenced.** tfsec runs at full sensitivity — any finding fails the build. The one current finding (SQL extended auditing) is deferred with an annotated inline ignore explaining why: audit logging belongs in the Log Analytics workspace that the observability phase builds, not in a placeholder storage account. The annotation is removed when that phase closes the finding properly.
+
+**Defense in depth on the data tier.** Disabling public network access and restricting the NSG are independent controls — either alone blocks internet access to the database. Verified both directions: a connection attempt from the internet times out, while the app's health check succeeds in ~20–70 ms.
+
+**Private DNS zone, because a private endpoint alone isn't enough.** SQL clients connect to `<server>.database.windows.net`, which by default resolves to a public IP even when a private endpoint exists. The `privatelink.database.windows.net` zone (exact name required) overrides resolution inside the VNet. Observable: `nslookup` of the server FQDN from inside the app answers with the private endpoint's `10.0.2.x` address; the same lookup from the internet follows the CNAME chain on to Microsoft's public gateway.
 
 **Same hostname, two answers — the private DNS zone at work:**
 
@@ -82,10 +110,7 @@ Each tier is a self-contained module with a small contract: inputs in `variables
 
 ![nslookup from a laptop resolving to a public IP](images/nslookup-from-laptop.png)
 
-**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs. Known limitation: app settings are visible to anyone with read access on the app; Key Vault references are the CI/CD-phase upgrade.
-
-
-**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs. Known limitation: app settings are visible to anyone with read access on the app; Key Vault references are the CI/CD-phase upgrade.
+**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs — including the pipeline's. After a destroy/rebuild, the app receives the newly generated password automatically through the same wiring.
 
 **VNet integration pre-wired in the network module.** `snet-web` was delegated to `Microsoft.Web/serverFarms` before the app existed — App Service VNet integration requires it, and it's the most commonly missed prerequisite.
 
@@ -135,18 +160,21 @@ az webapp config set --resource-group rg-webapp-demo \
 
 Visit `https://<app-name>.azurewebsites.net/health` — a `"database": "connected"` response verifies the full chain. Interactive API docs at `/docs`.
 
-Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one `apply` away (fresh SQL password, possibly a new private endpoint IP; nothing references either directly, so both are non-events). Redeploy the app zip after rebuilding.
+To run the pipeline instead (the way changes actually ship here): an Azure DevOps project with a variable group `terraform-credentials` holding the service principal's `ARM_*` values, a `prod` environment with an approval check, and a pipeline pointing at `azure-pipelines.yml`.
+
+Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one `apply` away (or one approved pipeline run). Redeploy the app zip after rebuilding; the app picks up the freshly generated database password automatically.
 
 ## Cost
 
-Roughly **$18/month** while deployed: B1 App Service plan ~$13, Basic-tier SQL ~$5; the network layer, private DNS, private endpoint, and state storage are free-to-pennies. Destroy between work sessions — rebuilding in minutes is the point of IaC.
+Roughly **$18/month** while deployed: B1 App Service plan ~$13, Basic-tier SQL ~$5; the network layer, private DNS, private endpoint, and state storage are free-to-pennies. Azure DevOps free tier covers the pipeline. Destroy between work sessions — rebuilding in minutes is the point of IaC.
 
 ## Roadmap
 
 - [x] **Network module** — VNet, web/data subnets, least-privilege NSGs, remote state
 - [x] **Database module** — Azure SQL exposed only through a private endpoint, with VNet-scoped private DNS
 - [x] **App module** — App Service with VNet integration; `/health` endpoint proves the tiers connect
-- [ ] **CI/CD** — Multi-stage Azure DevOps pipeline: validate + tfsec on PR, plan as reviewed artifact, apply gated behind manual approval
-- [ ] **Observability & governance** — Azure Monitor alerts, Log Analytics, Azure Policy (require tags, deny public IPs in the data subnet) and SQL audit logging to Log Analytics (closes the deferred tfsec finding)."
+- [x] **CI/CD** — Multi-stage Azure DevOps pipeline: validate + tfsec on PRs, plan as reviewed artifact, apply gated behind manual approval
+- [ ] **Observability & governance** — Azure Monitor alerts, Log Analytics, Azure Policy (require tags, deny public IPs in the data subnet), and SQL audit logging to Log Analytics (closes the deferred tfsec finding)
+- [ ] **Pipeline enhancements** — app-code deployment stage (zip deploy + startup command in Terraform), Key Vault-backed pipeline secrets
 
 Each phase lands as its own pull request.
