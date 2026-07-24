@@ -89,4 +89,16 @@ module "app" {
   db_username    = module.database.sql_admin_username
   db_password    = module.database.sql_admin_password
 }
-#
+
+module "monitoring" {
+  source              = "./modules/monitoring"
+  project_name        = "webapp-demo-molly"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  sql_server_id   = module.database.sql_server_id
+  sql_database_id = module.database.database_id
+  app_service_id  = module.app.app_service_id
+
+  alert_email = "mollymlindquist@gmail.com"
+}

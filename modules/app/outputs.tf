@@ -12,3 +12,9 @@ output "outbound_ip_addresses" {
   description = "Possible outbound IPs of the app — useful when debugging connectivity."
   value       = azurerm_linux_web_app.this.outbound_ip_addresses
 }
+
+output "app_service_id" {
+  description = "Resource ID of the web app (for diagnostics and alerts)."
+  value       = azurerm_linux_web_app.this.id
+}
+

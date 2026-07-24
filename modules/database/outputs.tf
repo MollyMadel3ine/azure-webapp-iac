@@ -28,3 +28,14 @@ output "connection_string" {
   value       = "Server=tcp:${azurerm_mssql_server.this.fully_qualified_domain_name},1433;Database=${azurerm_mssql_database.this.name};User ID=${var.sql_admin_username};Password=${random_password.sql_admin.result};Encrypt=yes;TrustServerCertificate=no;"
   sensitive   = true
 }
+
+output "sql_server_id" {
+  description = "Resource ID of the SQL server (for auditing policy)."
+  value       = azurerm_mssql_server.this.id
+}
+
+output "database_id" {
+  description = "Resource ID of the database (for metric alerts)."
+  value       = azurerm_mssql_database.this.id
+}
+

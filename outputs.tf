@@ -26,3 +26,13 @@ output "app_name" {
   description = "Name of the web app (for az webapp deploy commands)."
   value       = module.app.app_name
 }
+
+output "log_analytics_workspace" {
+  description = "Workspace name for KQL queries."
+  value       = module.monitoring.workspace_name
+}
+
+output "app_name" {
+  description = "Name of the web app (for deployment commands)."
+  value       = module.app.app_name
+}
