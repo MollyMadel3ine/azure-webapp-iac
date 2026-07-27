@@ -1,0 +1,29 @@
+{
+  "actions": [],
+  "criteria": {
+    "allOf": [
+      {
+        "criterionType": "StaticThresholdCriterion",
+        "metricName": "Http5xx",
+        "name": "cond0",
+        "operator": "GreaterThan",
+        "threshold": 5.0,
+        "timeAggregation": "Total"
+      }
+    ],
+    "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"
+  },
+  "description": "isolation test",
+  "enabled": true,
+  "evaluationFrequency": "PT5M",
+  "id": "/subscriptions/8bcfa6ad-31d2-4e4b-a36f-7b3b9c5cf8ed/resourceGroups/rg-webapp-demo/providers/Microsoft.Insights/metricAlerts/test-http5xx",
+  "location": "global",
+  "name": "test-http5xx",
+  "resourceGroup": "rg-webapp-demo",
+  "scopes": [
+    "/subscriptions/8bcfa6ad-31d2-4e4b-a36f-7b3b9c5cf8ed/resourceGroups/rg-webapp-demo/providers/Microsoft.Web/sites/webapp-demo-molly-app"
+  ],
+  "severity": 2,
+  "type": "Microsoft.Insights/metricAlerts",
+  "windowSize": "PT5M"
+}
