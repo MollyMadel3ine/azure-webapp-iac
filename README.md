@@ -72,6 +72,8 @@ Pull requests run Validate + Plan only; the Apply stage cannot be reached from a
 
 ![Alert auto-resolved after restore](images/firedrill-alert-resolved.png)
 
+![Resolved 200s](images/firedrill-200s.png)
+
 A rebuild-from-zero note: metric alerts on freshly created resources can race Azure's metric-definition registration — observed as persistent 400 "metric not found" errors for roughly an hour after a full rebuild, resolving once the backend caught up. Alerts targeting brand-new resources may need patience or a delayed retry.
 
 ### The tfsec finding, start to finish
