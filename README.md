@@ -61,7 +61,18 @@ Pull requests run Validate + Plan only; the Apply stage cannot be reached from a
 
 - **Log Analytics workspace** collects App Service HTTP/console logs and diagnostics.
 - **SQL audit logging** streams `SQLSecurityAuditEvents` from the server into the workspace — auditing is on at the server in log-monitoring mode, with no storage-account detour.
+- **Azure Monitor alerts** watch two real operational signals — App Service HTTP 5xx count and sustained SQL DTU consumption — wired to an email action group. Verified with a deliberate fire drill: corrupting the app's DB credential produced 503s, tripped the alert, and the restore auto-resolved it.
 - **Azure Policy** guardrails on the resource group: resources must carry a `project` tag, and network interfaces in the group may not have public IPs — so even a future Terraform mistake could not put a public IP in the data tier; the platform refuses.
+
+**The drill, evidenced:**
+
+![Deliberate 503s from the corrupted credential](images/firedrill-503s.png)
+
+![Alert fired notification](images/firedrill-alert-fired.png)
+
+![Alert auto-resolved after restore](images/firedrill-alert-resolved.png)
+
+A rebuild-from-zero note: metric alerts on freshly created resources can race Azure's metric-definition registration — observed as persistent 400 "metric not found" errors for roughly an hour after a full rebuild, resolving once the backend caught up. Alerts targeting brand-new resources may need patience or a delayed retry.
 
 ### The tfsec finding, start to finish
 
@@ -105,9 +116,11 @@ Each module keeps the same small contract: inputs in `variables.tf`, outputs in 
 
 **Private DNS zone, because a private endpoint alone isn't enough.** SQL clients connect to `<server>.database.windows.net`, which by default resolves to a public IP even when a private endpoint exists. The `privatelink.database.windows.net` zone (exact name required) overrides resolution inside the VNet. Observable: `nslookup` of the server FQDN from inside the app answers with the private endpoint's `10.0.2.x` address; the same lookup from the internet follows the CNAME chain on to Microsoft's public gateway.
 
-**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs — including the pipeline's. After a destroy/rebuild, the app receives the newly generated password automatically through the same wiring.
+**Credentials never exist outside Terraform.** The SQL admin password is generated in-config with `random_password` and flows to the app as an app setting via module outputs — never in a tfvars file, shell history, or the repo. Outputs carrying it are marked `sensitive`, so Terraform redacts them from plan/apply logs — including the pipeline's. After a destroy/rebuild, the app receives the newly generated password automatically through the same wiring — and rotation is one `terraform taint` of the password resource away.
 
-**Health checks tell machines the truth.** `/health` returns 200 with timing when the database round-trip succeeds and **503** when it fails — the status code, not just the JSON body, carries the verdict, which is what load balancers and the 5xx alert key on.
+**Health checks tell machines the truth.** `/health` returns 200 with timing when the database round-trip succeeds and **503** when it fails — the status code, not just the JSON body, carries the verdict, which is what load balancers and the 5xx alert key on. (The fire drill initially surfaced an older deployment returning 200 on failure — the alert correctly stayed silent, which is exactly why status codes matter.)
+
+**Startup command lives in Terraform.** App Service's startup command was originally set via CLI after deploys — until resource recreation revealed it silently vanishing (App Service falls back to a placeholder app). It now lives in `site_config.app_command_line`, so rebuilt infrastructure is self-sufficient.
 
 **VNet integration pre-wired in the network module.** `snet-web` was delegated to `Microsoft.Web/serverFarms` before the app existed — App Service VNet integration requires it, and it's the most commonly missed prerequisite.
 
@@ -144,22 +157,18 @@ terraform apply    # SQL server is the slow one — allow ~10 minutes
 Then deploy the application code onto the infrastructure:
 
 ```bash
-# Zip only the app folder's contents (main.py at the zip root)
+# Zip only the app folder's contents (main.py at the zip root) — always fresh
 cd app && zip -r ../app.zip . && cd ..
 
 az webapp deploy --resource-group rg-webapp-demo \
   --name <app-name> --src-path app.zip --type zip
-
-az webapp config set --resource-group rg-webapp-demo \
-  --name <app-name> \
-  --startup-file "uvicorn main:app --host 0.0.0.0 --port 8000"
 ```
 
-Visit `https://<app-name>.azurewebsites.net/health` — a `"database": "connected"` response verifies the full chain. Interactive API docs at `/docs`.
+Visit `https://<app-name>.azurewebsites.net/health` — a `"database": "connected"` response verifies the full chain. Interactive API docs at `/docs`. (The startup command is managed by Terraform; no post-deploy configuration needed.)
 
 To run the pipeline instead (the way changes actually ship here): an Azure DevOps project with a variable group `terraform-credentials` holding the service principal's `ARM_*` values, a `prod` environment with an approval check, and a pipeline pointing at `azure-pipelines.yml`. Policy guardrails are assigned by a one-time elevated bootstrap (documented commands, run with human credentials) after the environment exists.
 
-Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one approved pipeline run away. After rebuilding: redeploy the app zip, and re-run the policy bootstrap (assignments die with the resource group — the documented trade-off of keeping governance rights away from the pipeline).
+Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one approved pipeline run away. After rebuilding: redeploy the app zip, re-run the policy bootstrap (assignments die with the resource group — the documented trade-off of keeping governance rights away from the pipeline), and allow time for metric-definition registration before expecting alerts to create cleanly.
 
 ## Cost
 
@@ -171,6 +180,6 @@ Roughly **$18/month** while deployed: B1 App Service plan ~$13, Basic-tier SQL ~
 - [x] **Database module** — Azure SQL exposed only through a private endpoint, with VNet-scoped private DNS
 - [x] **App module** — App Service with VNet integration; `/health` endpoint proves the tiers connect
 - [x] **CI/CD** — Multi-stage Azure DevOps pipeline: validate + tfsec on PRs, plan as reviewed artifact, apply gated behind manual approval
-- [x] **Observability & governance** — Log Analytics, SQL audit logging (closed the deferred tfsec finding) , Azure Policy guardrails
+- [x] **Observability & governance** — Log Analytics, SQL audit logging (closed the deferred tfsec finding), Monitor alerts verified by fire drill, Azure Policy guardrails
 
-**Possible future enhancements:** app-code deployment stage in the pipeline (zip deploy + startup command in Terraform's `site_config`), Key Vault-backed pipeline secrets, a GitHub Actions port of the pipeline for side-by-side comparison, migration from tfsec to its successor Trivy. Fire drill testing with Monitor.
+**Possible future enhancements:** app-code deployment stage in the pipeline (zip deploy on merge — closes the recurring stale-code failure mode), Key Vault-backed pipeline secrets, a GitHub Actions port of the pipeline for side-by-side comparison, migration from tfsec to its successor Trivy.
