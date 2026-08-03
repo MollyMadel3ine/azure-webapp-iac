@@ -170,7 +170,7 @@ Visit `https://<app-name>.azurewebsites.net/health` — a `"database": "connecte
 
 To run the pipeline instead (the way changes actually ship here): an Azure DevOps project with a variable group `terraform-credentials` holding the service principal's `ARM_*` values, a `prod` environment with an approval check, and a pipeline pointing at `azure-pipelines.yml`. Policy guardrails are assigned by a one-time elevated bootstrap (documented commands, run with human credentials) after the environment exists.
 
-Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one approved pipeline run away. After rebuilding: redeploy the app zip, re-run the policy bootstrap (assignments die with the resource group — the documented trade-off of keeping governance rights away from the pipeline), and allow time for metric-definition registration before expecting alerts to create cleanly.
+Tear down with `terraform destroy` — the state resource group is unmanaged and survives, so a full rebuild is one approved pipeline run away. After rebuilding: redeploy the app zip, re-run the policy bootstrap (Docs/policy-bootstrap.md), and allow time for metric-definition registration before expecting alerts to be created cleanly.
 
 ## Cost
 
