@@ -4,7 +4,7 @@ A modular Terraform deployment of a three-tier Azure environment — virtual net
 
 Built incrementally as a portfolio project mapping to AZ-104 / AZ-305 / AZ-400 skills. Each phase landed as its own pull request — the commit history is the development story.
 
-**Live proof:** the app's `/health` endpoint opens a real connection to the database and reports the round-trip — a successful response exercises every layer below it (VNet integration → private DNS → private endpoint → SQL). When the database is unreachable, the endpoint returns HTTP 503, which feeds the monitoring layer's 5xx alert.
+**Live proof:** the app's `/health` endpoint opens a real connection to the database and reports the round-trip — a successful response exercises every layer below it (VNet integration → private DNS → private endpoint → SQL DB). When the database is unreachable, the endpoint returns HTTP 503, which feeds the monitoring layer's 5xx alert.
 
 ## Architecture
 
