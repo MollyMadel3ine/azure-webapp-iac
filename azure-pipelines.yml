@@ -99,7 +99,6 @@ stages:
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-              TF_VAR_enable_app_gateway: ${{ parameters.enableAppGateway }}
 
           - script: terraform plan -out=$(Build.ArtifactStagingDirectory)/tfplan -input=false
             displayName: "terraform plan"
@@ -108,6 +107,7 @@ stages:
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              TF_VAR_enable_app_gateway: ${{ parameters.enableAppGateway }}
 
           # Human-readable version of the plan into the pipeline log,
           # so reviewers read it without downloading anything.
