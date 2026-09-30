@@ -28,7 +28,14 @@ terraform {
 }
 
 provider "azurerm" {
-  features {}
+  features {
+    key_vault {
+      # Purging a deleted vault needs subscription-scope permission that
+      # the pipeline SP (RG-scoped Contributor) deliberately lacks.
+      # Leave destroyed vaults soft-deleted; they expire in 7 days at no cost. 
+      purge_soft_delete_on_destroy = false
+    }
+  }
 }
 
 resource "azurerm_resource_group" "main" {
@@ -84,10 +91,11 @@ module "app" {
   web_subnet_id = module.network.web_subnet_id
 
   # Database module outputs — the app's connection details
-  db_server_fqdn = module.database.sql_server_fqdn
-  db_name        = module.database.database_name
-  db_username    = module.database.sql_admin_username
-  db_password    = module.database.sql_admin_password
+  db_server_fqdn         = module.database.sql_server_fqdn
+  db_name                = module.database.database_name
+  db_username            = module.database.sql_admin_username
+  db_password            = module.database.sql_admin_password
+  restrict_public_access = var.enable_app_gateway
 }
 
 module "monitoring" {
@@ -101,4 +109,27 @@ module "monitoring" {
   app_service_id  = module.app.app_service_id
 
   alert_email = "mollymlindquist@gmail.com"
+}
+
+module "gateway" {
+  count  = var.enable_app_gateway ? 1 : 0
+  source = "./modules/gateway"
+
+  project_name        = "webapp-demo-molly" # forms the DNS label webapp-demo-molly-agw.westus2.cloudapp.azure.com
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  # Network module outputs
+  vnet_name = module.network.vnet_name
+  vnet_id   = module.network.vnet_id
+
+  # App module outputs
+  app_service_id       = module.app.app_service_id
+  app_default_hostname = module.app.app_default_hostname
+
+  # Monitoring module outputs
+  log_analytics_workspace_id = module.monitoring.workspace_id
+  action_group_id            = module.monitoring.action_group_id
+
+  waf_mode = "Detection" # flip to "Prevention" in a follow-up PR (Step 9)
 }

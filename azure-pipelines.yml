@@ -21,6 +21,15 @@ pr:
     include:
       - main
 
+parameters:
+  - name: enableAppGateway
+    displayName: "Deploy App gateway? (WAF_v2 bills ~$0.45/hour while it exists)"
+    type: string
+    default: "false"
+    values:
+      - "false"
+      - "true"
+
 variables:
   - group: terraform-credentials # ARM_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID
 
@@ -90,6 +99,7 @@ stages:
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              TF_VAR_enable_app_gateway: ${{ parameters.enableAppGateway }}
 
           - script: terraform plan -out=$(Build.ArtifactStagingDirectory)/tfplan -input=false
             displayName: "terraform plan"

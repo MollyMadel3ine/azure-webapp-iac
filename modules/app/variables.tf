@@ -54,3 +54,9 @@ variable "tags" {
     managed_by = "terraform"
   }
 }
+
+variable "restrict_public_access" {
+  description = "When true, the main site rejects all public traffic. Private endpoint traffic (the App gateway) is unaffected. SCM stays reachable so zip deploys keep working"
+  type        = bool
+  default     = false
+}

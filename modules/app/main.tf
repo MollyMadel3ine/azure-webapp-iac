@@ -34,8 +34,11 @@ resource "azurerm_linux_web_app" "this" {
   virtual_network_subnet_id = var.web_subnet_id
 
   site_config {
-    always_on        = true
-    app_command_line = "uvicorn main:app --host 0.0.0.0 --port 8000"
+    always_on                         = true
+    app_command_line                  = "uvicorn main:app --host 0.0.0.0 --port 8000"
+    ip_restriction_default_action     = var.restrict_public_access ? "Deny" : "Allow"
+    scm_use_main_ip_restriction       = false
+    scm_ip_restriction_default_action = "Allow"
 
     application_stack {
       python_version = "3.12"

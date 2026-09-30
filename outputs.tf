@@ -31,3 +31,8 @@ output "log_analytics_workspace" {
   description = "Workspace name for KQL queries."
   value       = module.monitoring.workspace_name
 }
+
+output "gateway_url" {
+  description = "Public HTTPS entry point (null when the gateway is disabled)"
+  value       = one(module.gateway[*].gateway_url)
+}
