@@ -76,6 +76,25 @@ Pull requests run Validate + Plan only; the Apply stage cannot be reached from a
 
 A rebuild-from-zero note: metric alerts on freshly created resources can race Azure's metric-definition registration — observed as persistent 400 "metric not found" errors for roughly an hour after a full rebuild, resolving once the backend caught up. Alerts targeting brand-new resources may need patience or a delayed retry.
 
+
+## Ingress: Application Gateway with WAF
+
+An optional hardened front door, switched on and off per session through the pipeline's **Deploy App Gateway?** parameter. When it's on, all public traffic enters through an Application Gateway (WAF_v2) in its own subnet, and the gateway reaches the app over a private endpoint. The app's own public URL stops serving: access restrictions deny direct requests, while private endpoint traffic isn't subject to them. It's off by default because WAF_v2 bills by the hour whether or not it serves traffic.
+
+**Through the gateway, the full chain answers.** A request to `/health` via the gateway returns `"database": "connected"`, exercising every hop: gateway → app private endpoint → App Service → SQL private endpoint → database.
+
+![Health check through the Application Gateway returning database connected](images/agw-01-health-through-gateway.png)
+
+**The back door is closed.** The same request sent straight to the App Service URL gets a 403. The gateway, with its WAF, is the only way in.
+
+![Direct request to the App Service URL returning 403 Forbidden](images/agw-02-direct-access-403.png)
+
+**The gateway reaches the app privately.** Backend health reports Healthy at a 10.0.4.x address, which is the app's private endpoint, not its public IP.
+
+![Application Gateway backend health showing Healthy at a private 10.0.4.x address](images/agw-03-backend-healthy-private-ip.png)
+
+
+
 ### The tfsec finding, start to finish
 
 The security scan initially flagged the SQL server for missing audit configuration (`azure-database-enable-audit`, medium). Rather than bolting on a placeholder storage account, the finding was **deferred with an annotated inline ignore** explaining that audit logging belonged in the observability phase's Log Analytics workspace. When that phase landed, auditing was pointed at the workspace, the annotation was deleted, and the pipeline verified the closure. Detection → documented deferral → architectural resolution, all visible in commit history.
@@ -183,5 +202,6 @@ Roughly **$18/month** while deployed: B1 App Service plan ~$13, Basic-tier SQL ~
 - [x] **App module** — App Service with VNet integration; `/health` endpoint proves the tiers connect
 - [x] **CI/CD** — Multi-stage Azure DevOps pipeline: validate + tfsec on PRs, plan as reviewed artifact, apply gated behind manual approval
 - [x] **Observability & governance** — Log Analytics, SQL audit logging (closed the deferred tfsec finding), Monitor alerts verified by fire drill, Azure Policy guardrails
+- [x] **Ingress** — WAF_v2 Application Gateway in front of the app, reached over a private endpoint and toggled per session; traffic path verified, WAF and availability drills next
 
 **Possible future enhancements:** app-code deployment stage in the pipeline (zip deploy on merge — closes the recurring stale-code failure mode), Key Vault-backed pipeline secrets, a GitHub Actions port of the pipeline for side-by-side comparison, migration from tfsec to its successor Trivy.
